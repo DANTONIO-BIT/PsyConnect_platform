@@ -1,14 +1,17 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { NotificationBell } from "@/components/notification-bell"
 import {
   Brain,
   LayoutDashboard,
   CalendarDays,
   UserCircle,
   Clock,
+  Users,
   LogOut,
   ChevronRight,
   Bell,
@@ -17,6 +20,7 @@ import {
 const NAV = [
   { href: "/dashboard/psicologo", label: "Inicio", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/psicologo/citas", label: "Mis Citas", icon: CalendarDays },
+  { href: "/dashboard/psicologo/pacientes", label: "Pacientes", icon: Users },
   { href: "/dashboard/psicologo/disponibilidad", label: "Disponibilidad", icon: Clock },
   { href: "/dashboard/psicologo/perfil", label: "Mi Perfil", icon: UserCircle },
 ]
@@ -24,6 +28,14 @@ const NAV = [
 export default function PsicologoDashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+  const [userId, setUserId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }: any) => {
+      if (data.user) setUserId(data.user.id)
+    })
+  }, [])
 
   const handleLogout = async () => {
     const supabase = createClient()
@@ -96,6 +108,7 @@ export default function PsicologoDashboardLayout({ children }: { children: React
           <button className="relative p-2 rounded-xl hover:bg-secondary transition-colors text-muted-foreground">
             <Bell className="w-4 h-4" />
           </button>
+          {userId && <NotificationBell userId={userId} />}
         </header>
 
         <main className="flex-1 p-8">{children}</main>

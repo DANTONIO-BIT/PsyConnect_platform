@@ -199,6 +199,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     scheduled_at: futureDate(1, 10), duration_minutes: 50,
     status: "confirmed", session_link: "https://meet.google.com/xyz-abc-123",
     notes: "Segunda sesión. Trabajar técnicas de respiración.",
+    google_event_id: "gcal_001",
     created_at: pastDate(5), updated_at: pastDate(5),
   },
   {
@@ -207,6 +208,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     scheduled_at: futureDate(3, 15), duration_minutes: 50,
     status: "scheduled", session_link: null,
     notes: null,
+    google_event_id: null,
     created_at: pastDate(2), updated_at: pastDate(2),
   },
   {
@@ -215,6 +217,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     scheduled_at: pastDate(7, 10), duration_minutes: 50,
     status: "completed", session_link: null,
     notes: "Primera sesión completada. Buena adherencia.",
+    google_event_id: null,
     created_at: pastDate(14), updated_at: pastDate(7),
   },
   {
@@ -223,6 +226,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     scheduled_at: futureDate(2, 17), duration_minutes: 50,
     status: "confirmed", session_link: "https://meet.google.com/def-ghi-456",
     notes: "Seguimiento terapia de pareja.",
+    google_event_id: "gcal_004",
     created_at: pastDate(3), updated_at: pastDate(3),
   },
   {
@@ -231,6 +235,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     scheduled_at: pastDate(14, 15), duration_minutes: 50,
     status: "completed", session_link: null,
     notes: null,
+    google_event_id: null,
     created_at: pastDate(21), updated_at: pastDate(14),
   },
   {
@@ -239,6 +244,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     scheduled_at: pastDate(3, 17), duration_minutes: 50,
     status: "no_show", session_link: null,
     notes: "Paciente no se conectó.",
+    google_event_id: null,
     created_at: pastDate(10), updated_at: pastDate(3),
   },
 ]
