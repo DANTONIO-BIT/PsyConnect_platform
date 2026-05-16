@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -64,7 +64,6 @@ function SearchStep({
       const list = (data ?? []) as unknown as Psychologist[]
       setPsychologists(list)
 
-      // Auto-select if preselected
       if (preselectedId) {
         const pre = list.find((p) => p.id === preselectedId)
         if (pre) { onSelect(pre); return }
@@ -196,7 +195,6 @@ function ScheduleStep({
         <ArrowLeft className="w-4 h-4" /> Cambiar psicólogo
       </button>
 
-      {/* Selected psy summary */}
       <div className="flex items-center gap-3 bg-secondary rounded-2xl px-4 py-3">
         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
           {psychologist.profiles.full_name[0]}
@@ -319,8 +317,8 @@ function ConfirmStep({
   )
 }
 
-// ─── Main page ────────────────────────────────────────────────
-export default function AgendarPage() {
+// ─── Main page content (uses useSearchParams) ─────────────────
+function AgendarContent() {
   const searchParams   = useSearchParams()
   const router         = useRouter()
   const preselectedId  = searchParams.get("psicologo") ?? undefined
@@ -331,6 +329,7 @@ export default function AgendarPage() {
   const [selectedHour, setHour]     = useState("")
   const [booking, setBooking]       = useState(false)
   const [done, setDone]             = useState(false)
+  const [bookedAt, setBookedAt]     = useState<string>("")
 
   const handleSelect = (psy: Psychologist) => {
     setPsy(psy)
@@ -347,30 +346,25 @@ export default function AgendarPage() {
     if (!psychologist) return
     setBooking(true)
 
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push("/auth/login"); return }
-
-    // Build scheduled_at: next occurrence of selected weekday + hour
-    const dayIndex = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"].indexOf(selectedDay)
-    const now      = new Date()
-    const diff     = (dayIndex - now.getDay() + 7) % 7 || 7
-    const date     = new Date(now)
-    date.setDate(now.getDate() + diff)
-    const [hh, mm] = selectedHour.split(":")
-    date.setHours(Number(hh), Number(mm), 0, 0)
-
-    // Ensure patient record exists
-    await supabase.from("patients").upsert({ id: user.id }, { onConflict: "id" })
-
-    await supabase.from("appointments").insert({
-      psychologist_id: psychologist.id,
-      patient_id:      user.id,
-      scheduled_at:    date.toISOString(),
-      duration_minutes: 50,
-      status:          "scheduled",
+    const response = await fetch('/api/book', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        psychologistId: psychologist.id,
+        dayOfWeek: selectedDay,
+        hour: selectedHour,
+      }),
     })
 
+    const result = await response.json()
+
+    if (!response.ok) {
+      setBooking(false)
+      alert(result.error || 'Error al agendar la cita')
+      return
+    }
+
+    setBookedAt(result.scheduledAt || '')
     setBooking(false)
     setDone(true)
   }
@@ -382,8 +376,14 @@ export default function AgendarPage() {
       </div>
       <h2 className="text-xl font-bold text-foreground">¡Cita agendada!</h2>
       <p className="text-muted-foreground text-sm">
-        Tu sesión con <strong>{psychologist?.profiles.full_name}</strong> el{" "}
-        <strong>{DAY_LABELS[selectedDay]}</strong> a las <strong>{selectedHour}</strong> ha sido registrada.
+        Tu sesión con <strong>{psychologist?.profiles.full_name}</strong> ha sido registrada.
+        {bookedAt && (
+          <>
+            <br />
+            Fecha: <strong>{new Date(bookedAt).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</strong>
+          </>
+        )}
+        <br />
         Recibirás una confirmación por email.
       </p>
       <Button
@@ -446,5 +446,18 @@ export default function AgendarPage() {
         )}
       </div>
     </div>
+  )
+}
+
+// ─── Default export with Suspense boundary ────────────────────
+export default function AgendarPage() {
+  return (
+    <Suspense fallback={
+      <div className="max-w-xl mx-auto py-16 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    }>
+      <AgendarContent />
+    </Suspense>
   )
 }
