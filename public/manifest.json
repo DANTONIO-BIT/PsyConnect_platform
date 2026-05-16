@@ -1,0 +1,20 @@
+{
+  "name": "PsyConnect",
+  "short_name": "PsyConnect",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F3EDF6",
+  "theme_color": "#9B6FC4",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png"
+    }
+  ]
+}
