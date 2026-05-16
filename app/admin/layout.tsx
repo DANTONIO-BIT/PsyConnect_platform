@@ -11,6 +11,8 @@ import {
   CalendarDays,
   LogOut,
   ChevronRight,
+  DollarSign,
+  Shield,
 } from "lucide-react"
 
 const NAV = [
@@ -18,6 +20,8 @@ const NAV = [
   { href: "/admin/psicologos", label: "Psicólogos", icon: UserCheck },
   { href: "/admin/pacientes", label: "Pacientes", icon: Users },
   { href: "/admin/citas", label: "Citas", icon: CalendarDays },
+  { href: "/admin/finanzas", label: "Finanzas", icon: DollarSign },
+  { href: "/admin/admins", label: "Administradores", icon: Shield },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

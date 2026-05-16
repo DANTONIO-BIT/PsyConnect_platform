@@ -1,109 +1,182 @@
 import { createClient } from "@/lib/supabase/server"
-import { Search, UserCircle } from "lucide-react"
+import { Users, UserCheck, CalendarDays, TrendingUp } from "lucide-react"
 
-export default async function PacientesPage({
-  searchParams,
+// ─── Stat Card ────────────────────────────────────────────────
+const StatCard = ({
+  label,
+  value,
+  icon: Icon,
+  color,
+  sub,
 }: {
-  searchParams: Promise<{ q?: string }>
-}) {
-  const { q } = await searchParams
+  label: string
+  value: number | string
+  icon: React.ElementType
+  color: string
+  sub?: string
+}) => (
+  <div className="bg-card border border-border rounded-2xl p-6">
+    <div className="flex items-start justify-between">
+      <div>
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
+        {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+      </div>
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
+        <Icon className="w-5 h-5 text-primary-foreground" />
+      </div>
+    </div>
+  </div>
+)
+
+// ─── Page ─────────────────────────────────────────────────────
+export default async function AdminPatientsPage() {
   const supabase = await createClient()
 
-  let query = supabase
+  // All patients with their assigned psychologist
+  const { data: patients } = await supabase
     .from("patients")
     .select(`
       id, created_at,
-      profiles(full_name, email, country, phone),
-      assigned_psychologist:psychologists(
-        profiles(full_name)
-      ),
-      appointments(count)
+      profiles(id, full_name, email, country),
+      psychologists:assigned_psychologist_id(
+        profiles(full_name, email)
+      )
     `)
     .order("created_at", { ascending: false })
 
-  if (q) {
-    query = query.ilike("profiles.full_name", `%${q}%`)
-  }
+  // Stats per psychologist
+  const { data: psychologists } = await supabase
+    .from("psychologists")
+    .select(`
+      id, status,
+      profiles(full_name, email, country),
+      patients(count)
+    `)
+    .eq("status", "approved")
 
-  const { data: patients } = await query
+  // Total patients
+  const { count: totalPatients } = await supabase
+    .from("patients")
+    .select("*", { count: "exact", head: true })
+
+  // Unassigned patients
+  const { count: unassignedCount } = await supabase
+    .from("patients")
+    .select("*", { count: "exact", head: true })
+    .is("assigned_psychologist_id", null)
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Pacientes</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            {patients?.length ?? 0} pacientes registrados
-          </p>
-        </div>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Pacientes</h1>
+        <p className="text-muted-foreground text-sm mt-1">Vista general de pacientes por psicólogo</p>
       </div>
 
-      {/* Search */}
-      <form className="relative max-w-sm">
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <input
-          name="q"
-          defaultValue={q}
-          placeholder="Buscar por nombre..."
-          className="w-full h-10 pl-9 pr-4 rounded-xl border border-input bg-card text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="Total pacientes"
+          value={totalPatients ?? 0}
+          icon={Users}
+          color="bg-accent"
         />
-      </form>
+        <StatCard
+          label="Sin asignar"
+          value={unassignedCount ?? 0}
+          icon={Users}
+          color="bg-amber-500"
+          sub="Requieren asignación"
+        />
+        <StatCard
+          label="Psicólogos activos"
+          value={psychologists?.length ?? 0}
+          icon={UserCheck}
+          color="bg-primary"
+        />
+        <StatCard
+          label="Promedio pacientes/psicólogo"
+          value={psychologists && psychologists.length > 0
+            ? (Math.round((totalPatients ?? 0) / psychologists.length * 10) / 10).toFixed(1)
+            : "0"}
+          icon={TrendingUp}
+          color="bg-primary"
+        />
+      </div>
 
-      {/* Table */}
+      {/* Patients by psychologist */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-border">
+          <h2 className="font-semibold text-foreground">Pacientes por psicólogo</h2>
+        </div>
+
         {patients && patients.length > 0 ? (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-xs text-muted-foreground">
-                <th className="text-left px-6 py-3 font-medium">Paciente</th>
-                <th className="text-left px-6 py-3 font-medium hidden md:table-cell">País</th>
-                <th className="text-left px-6 py-3 font-medium hidden lg:table-cell">Psicólogo asignado</th>
-                <th className="text-left px-6 py-3 font-medium hidden lg:table-cell">Sesiones</th>
-                <th className="text-left px-6 py-3 font-medium">Registro</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {patients.map((patient: any) => (
-                <tr key={patient.id} className="hover:bg-secondary/40 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center flex-shrink-0">
-                        <UserCircle className="w-5 h-5 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">{patient.profiles?.full_name}</p>
-                        <p className="text-xs text-muted-foreground">{patient.profiles?.email}</p>
-                      </div>
+          <div className="divide-y divide-border">
+            {patients.map((patient: any) => (
+              <div key={patient.id} className="px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-accent/20 rounded-full flex items-center justify-center text-sm font-medium text-accent">
+                    {patient.profiles?.full_name?.[0] ?? "P"}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{patient.profiles?.full_name}</p>
+                    <p className="text-xs text-muted-foreground">{patient.profiles?.email}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {patient.psychologists?.profiles ? (
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Asignado a</p>
+                      <p className="text-sm font-medium text-foreground">{patient.psychologists.profiles.full_name}</p>
                     </div>
-                  </td>
-                  <td className="px-6 py-4 hidden md:table-cell text-muted-foreground">
-                    {patient.profiles?.country === "CL" ? "🇨🇱 Chile" : "🇪🇸 España"}
-                  </td>
-                  <td className="px-6 py-4 hidden lg:table-cell text-muted-foreground">
-                    {patient.assigned_psychologist?.profiles?.full_name ?? (
-                      <span className="italic text-muted-foreground/60">Sin asignar</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 hidden lg:table-cell text-muted-foreground">
-                    {patient.appointments?.[0]?.count ?? 0}
-                  </td>
-                  <td className="px-6 py-4 text-muted-foreground">
-                    {new Date(patient.created_at).toLocaleDateString("es-ES", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  ) : (
+                    <span className="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">
+                      Sin asignar
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {patient.profiles?.country}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
-          <div className="text-center py-12 text-muted-foreground text-sm">
-            {q ? `No se encontraron pacientes para "${q}"` : "No hay pacientes registrados aún"}
+          <div className="px-6 py-10 text-center text-muted-foreground text-sm">
+            No hay pacientes registrados
           </div>
         )}
       </div>
+
+      {/* Psychologist summary */}
+      {psychologists && psychologists.length > 0 && (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-border">
+            <h2 className="font-semibold text-foreground">Resumen por psicólogo</h2>
+          </div>
+          <div className="divide-y divide-border">
+            {psychologists.map((psy: any) => (
+              <div key={psy.id} className="px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-primary/10 rounded-full flex items-center justify-center text-sm font-medium text-primary">
+                    {psy.profiles?.full_name?.[0] ?? "P"}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{psy.profiles?.full_name}</p>
+                    <p className="text-xs text-muted-foreground">{psy.profiles?.email} · {psy.profiles?.country}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm text-foreground">
+                    {psy.patients?.[0]?.count ?? 0} pacientes
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

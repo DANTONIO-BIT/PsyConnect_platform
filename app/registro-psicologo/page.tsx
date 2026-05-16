@@ -168,6 +168,9 @@ export default function RegistroPsicologoPage() {
       const { error: uploadError } = await supabase.storage
         .from("avatars")
         .upload(path, form.avatarFile, { upsert: true })
+      if (uploadError) {
+        console.error("Avatar upload error:", uploadError)
+      }
       if (!uploadError) {
         const { data } = supabase.storage.from("avatars").getPublicUrl(path)
         avatarUrl = data.publicUrl
@@ -181,17 +184,27 @@ export default function RegistroPsicologoPage() {
       const { error: docError } = await supabase.storage
         .from("psicologos-docs")
         .upload(path, file)
+      if (docError) {
+        console.error("Document upload error:", docError)
+      }
       if (!docError) documentUrls.push(path)
     }
 
     // Update profile
-    await supabase.from("profiles").update({
+    const { error: profileError } = await supabase.from("profiles").update({
       full_name: form.fullName,
       phone: form.phone,
       country: form.country,
       avatar_url: avatarUrl,
       role: "psychologist",
     }).eq("id", user.id)
+
+    if (profileError) {
+      console.error("Profile update error:", profileError)
+      setError(`Error al actualizar perfil: ${profileError.message}`)
+      setLoading(false)
+      return
+    }
 
     // Insert psychologist record
     const { error: psyError } = await supabase.from("psychologists").upsert({
@@ -210,7 +223,8 @@ export default function RegistroPsicologoPage() {
     })
 
     if (psyError) {
-      setError("Error al guardar tu perfil. Intenta de nuevo.")
+      console.error("Psychologist insert error:", psyError)
+      setError(`Error al guardar perfil: ${psyError.message}`)
       setLoading(false)
       return
     }
