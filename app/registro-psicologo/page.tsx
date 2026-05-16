@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -18,6 +18,7 @@ import {
   Loader2,
   Upload,
   X,
+  Mail,
 } from "lucide-react"
 import type { AvailableHours, WeekDay } from "@/types/database"
 
@@ -98,6 +99,37 @@ export default function RegistroPsicologoPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
+  const [authChecking, setAuthChecking] = useState(true)
+  const [emailNotVerified, setEmailNotVerified] = useState(false)
+
+  // Verify auth on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push("/auth/login?redirect=/registro-psicologo")
+        return
+      }
+      // Check if email is verified
+      if (!user.email_confirmed_at) {
+        setEmailNotVerified(true)
+      }
+      setAuthChecking(false)
+    }
+    checkAuth()
+  }, [])
+
+  // Listen for auth changes (e.g., user signs out)
+  useEffect(() => {
+    const supabase = createClient()
+    const { data } = supabase.auth.onAuthStateChange((event: string) => {
+      if (event === "SIGNED_OUT") {
+        router.push("/auth/login?redirect=/registro-psicologo")
+      }
+    })
+    return () => data.subscription.unsubscribe()
+  }, [])
 
   const set = <K extends keyof FormData>(key: K, value: FormData[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -118,7 +150,12 @@ export default function RegistroPsicologoPage() {
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
-      setError("Debes iniciar sesión primero.")
+      router.push("/auth/login?redirect=/registro-psicologo")
+      return
+    }
+
+    if (!user.email_confirmed_at) {
+      setError("Debes verificar tu email antes de completar el registro. Revisa tu bandeja de entrada y haz clic en el enlace de verificación.")
       setLoading(false)
       return
     }
@@ -180,6 +217,43 @@ export default function RegistroPsicologoPage() {
 
     setSubmitted(true)
     setLoading(false)
+  }
+
+  // ── Auth checking screen ──
+  if (authChecking) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  // ── Email not verified screen ──
+  if (emailNotVerified) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="max-w-md w-full text-center">
+          <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Mail className="w-10 h-10 text-amber-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-3">Verifica tu email</h1>
+          <p className="text-muted-foreground mb-2">
+            Te enviamos un enlace de verificación a tu correo electrónico.
+          </p>
+          <p className="text-muted-foreground text-sm mb-8">
+            Haz clic en el enlace para activar tu cuenta y luego vuelve aquí para completar tu registro profesional.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Link href="/auth/login">
+              <Button variant="outline" className="rounded-full">Ir al login</Button>
+            </Link>
+            <Link href="/">
+              <Button className="bg-primary hover:bg-accent text-primary-foreground rounded-full">Volver al inicio</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // ── Success screen ──

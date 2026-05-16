@@ -1,33 +1,79 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Loader2, CheckCircle2, Clock } from "lucide-react"
+import { Loader2, CheckCircle2, Clock, Grid3X3, Sparkles } from "lucide-react"
 import type { AvailableHours, WeekDay } from "@/types/database"
 
-const DAYS: { key: WeekDay; label: string }[] = [
-  { key: "monday",    label: "Lunes" },
-  { key: "tuesday",   label: "Martes" },
-  { key: "wednesday", label: "Miércoles" },
-  { key: "thursday",  label: "Jueves" },
-  { key: "friday",    label: "Viernes" },
-  { key: "saturday",  label: "Sábado" },
-  { key: "sunday",    label: "Domingo" },
+const DAYS: { key: WeekDay; label: string; short: string }[] = [
+  { key: "monday",    label: "Lunes",     short: "Lun" },
+  { key: "tuesday",   label: "Martes",    short: "Mar" },
+  { key: "wednesday", label: "Miércoles", short: "Mié" },
+  { key: "thursday",  label: "Jueves",    short: "Jue" },
+  { key: "friday",    label: "Viernes",   short: "Vie" },
+  { key: "saturday",  label: "Sábado",    short: "Sáb" },
+  { key: "sunday",    label: "Domingo",   short: "Dom" },
 ]
 
 const HOURS = Array.from({ length: 30 }, (_, i) => {
-  const totalMins = (7 * 60) + i * 30 // 07:00 to 21:30
+  const totalMins = 7 * 60 + i * 30
   const h = Math.floor(totalMins / 60)
   const m = totalMins % 60
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
 })
+
+const PRESETS = [
+  { label: "Lun–Vie 9:00–18:00", icon: "🕘", apply: (): AvailableHours => {
+    const result: AvailableHours = {}
+    const workHours = HOURS.filter(t => t >= "09:00" && t < "18:00")
+    const days: WeekDay[] = ["monday","tuesday","wednesday","thursday","friday"]
+    days.forEach(d => { result[d] = [...workHours] })
+    result.saturday = []
+    result.sunday = []
+    return result
+  }},
+  { label: "Lun–Vie 9:00–13:00", icon: "🌅", apply: (): AvailableHours => {
+    const result: AvailableHours = {}
+    const morning = HOURS.filter(t => t >= "09:00" && t < "13:00")
+    const days: WeekDay[] = ["monday","tuesday","wednesday","thursday","friday"]
+    days.forEach(d => { result[d] = [...morning] })
+    result.saturday = []
+    result.sunday = []
+    return result
+  }},
+  { label: "Lun–Vie 14:00–20:00", icon: "🌇", apply: (): AvailableHours => {
+    const result: AvailableHours = {}
+    const afternoon = HOURS.filter(t => t >= "14:00" && t < "20:00")
+    const days: WeekDay[] = ["monday","tuesday","wednesday","thursday","friday"]
+    days.forEach(d => { result[d] = [...afternoon] })
+    result.saturday = []
+    result.sunday = []
+    return result
+  }},
+  { label: "Lun–Sáb 9:00–13:00", icon: "📅", apply: (): AvailableHours => {
+    const result: AvailableHours = {}
+    const morning = HOURS.filter(t => t >= "09:00" && t < "13:00")
+    const days: WeekDay[] = ["monday","tuesday","wednesday","thursday","friday","saturday"]
+    days.forEach(d => { result[d] = [...morning] })
+    result.sunday = []
+    return result
+  }},
+]
+
+const DEFAULT_PRESET = PRESETS[0].apply()
 
 export default function DisponibilidadPage() {
   const [hours, setHours] = useState<AvailableHours>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+
+  // Drag state
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragMode, setDragMode] = useState<"add" | "remove" | null>(null)
+  const dragStart = useRef<{ day: WeekDay; hour: string } | null>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -41,11 +87,20 @@ export default function DisponibilidadPage() {
         .eq("id", user.id)
         .single()
 
-      if (data?.available_hours) setHours(data.available_hours as AvailableHours)
+      if (data?.available_hours && Object.keys(data.available_hours).length > 0) {
+        setHours(data.available_hours as AvailableHours)
+      } else {
+        // First time — apply default preset
+        setHours(DEFAULT_PRESET)
+      }
       setLoading(false)
     }
     load()
   }, [])
+
+  const isSelected = (day: WeekDay, hour: string): boolean => {
+    return (hours[day] ?? []).includes(hour)
+  }
 
   const toggle = (day: WeekDay, hour: string) => {
     const current = hours[day] ?? []
@@ -56,16 +111,71 @@ export default function DisponibilidadPage() {
     setSaved(false)
   }
 
-  const clearDay = (day: WeekDay) => {
-    setHours((prev) => ({ ...prev, [day]: [] }))
+  const setRange = (startDay: WeekDay, startHour: string, endDay: WeekDay, endHour: string, value: boolean) => {
+    const dayKeys = DAYS.map(d => d.key)
+    const startDayIdx = dayKeys.indexOf(startDay)
+    const endDayIdx = dayKeys.indexOf(endDay)
+    const hourIdx = HOURS.indexOf(startHour)
+    const endHourIdx = HOURS.indexOf(endHour)
+
+    const minDay = Math.min(startDayIdx, endDayIdx)
+    const maxDay = Math.max(startDayIdx, endDayIdx)
+    const minHour = Math.min(hourIdx, endHourIdx)
+    const maxHour = Math.max(hourIdx, endHourIdx)
+
+    setHours((prev) => {
+      const next = { ...prev }
+      for (let di = minDay; di <= maxDay; di++) {
+        const day = dayKeys[di]
+        const current = [...(next[day] ?? [])]
+        for (let hi = minHour; hi <= maxHour; hi++) {
+          const hour = HOURS[hi]
+          if (value && !current.includes(hour)) {
+            current.push(hour)
+          } else if (!value) {
+            const idx = current.indexOf(hour)
+            if (idx >= 0) current.splice(idx, 1)
+          }
+        }
+        next[day] = current.sort()
+      }
+      return next
+    })
     setSaved(false)
   }
 
-  const copyToAll = (day: WeekDay) => {
-    const source = hours[day] ?? []
-    const updated: AvailableHours = {}
-    DAYS.forEach(({ key }) => { updated[key] = [...source] })
-    setHours(updated)
+  const handleMouseDown = (day: WeekDay, hour: string) => {
+    const selected = isSelected(day, hour)
+    setIsDragging(true)
+    setDragMode(selected ? "remove" : "add")
+    dragStart.current = { day, hour }
+  }
+
+  const handleMouseEnter = (day: WeekDay, hour: string) => {
+    if (!isDragging || !dragMode || !dragStart.current) return
+    setRange(dragStart.current.day, dragStart.current.hour, day, hour, dragMode === "add")
+  }
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false)
+    setDragMode(null)
+    dragStart.current = null
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener("mouseup", handleMouseUp)
+    return () => document.removeEventListener("mouseup", handleMouseUp)
+  }, [handleMouseUp])
+
+  const applyPreset = (preset: typeof PRESETS[0]) => {
+    setHours(preset.apply())
+    setSaved(false)
+  }
+
+  const clearAll = () => {
+    const cleared: AvailableHours = {}
+    DAYS.forEach(d => { cleared[d.key] = [] })
+    setHours(cleared)
     setSaved(false)
   }
 
@@ -96,12 +206,13 @@ export default function DisponibilidadPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-4xl">
+      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Disponibilidad</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Define los horarios en que puedes atender pacientes
+            Haz clic y arrastra para seleccionar tus horarios de atención
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -125,62 +236,90 @@ export default function DisponibilidadPage() {
         </div>
       </div>
 
-      {/* Days */}
-      <div className="space-y-4">
-        {DAYS.map(({ key, label }) => {
-          const selected = hours[key] ?? []
-          return (
-            <div key={key} className="bg-card border border-border rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-foreground text-sm">{label}</span>
-                  {selected.length > 0 && (
-                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                      {selected.length} horarios
-                    </span>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  {selected.length > 0 && (
-                    <>
-                      <button
-                        onClick={() => copyToAll(key)}
-                        className="text-xs text-muted-foreground hover:text-primary transition-colors"
-                        title="Copiar a todos los días"
-                      >
-                        Copiar a todos
-                      </button>
-                      <span className="text-muted-foreground/40">·</span>
-                      <button
-                        onClick={() => clearDay(key)}
-                        className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-                      >
-                        Limpiar
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
+      {/* Presets */}
+      <div className="bg-card border border-border rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles className="w-4 h-4 text-primary" />
+          <span className="text-sm font-semibold text-foreground">Configuración rápida</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {PRESETS.map((preset) => (
+            <button
+              key={preset.label}
+              onClick={() => applyPreset(preset)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-foreground hover:border-primary/50 hover:bg-primary/5 transition-all"
+            >
+              <span>{preset.icon}</span>
+              {preset.label}
+            </button>
+          ))}
+          <button
+            onClick={clearAll}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:border-destructive/50 hover:text-destructive transition-all"
+          >
+            Limpiar todo
+          </button>
+        </div>
+      </div>
 
-              <div className="flex flex-wrap gap-1.5">
-                {HOURS.map((h) => (
-                  <button
-                    key={h}
-                    type="button"
-                    onClick={() => toggle(key, h)}
-                    className={`px-2.5 py-1 rounded-lg text-xs border transition-all ${
-                      selected.includes(h)
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                    }`}
-                  >
-                    {h}
-                  </button>
-                ))}
+      {/* Grid */}
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        {/* Scrollable container */}
+        <div ref={gridRef} className="overflow-x-auto">
+          <div className="min-w-[700px]">
+            {/* Day headers */}
+            <div className="grid grid-cols-8 border-b border-border sticky top-0 bg-card z-10">
+              <div className="p-3 text-xs font-medium text-muted-foreground text-center border-r border-border/50">
+                Hora
               </div>
+              {DAYS.map(({ short }) => (
+                <div key={short} className="p-3 text-xs font-semibold text-foreground text-center border-r border-border/50 last:border-r-0">
+                  {short}
+                </div>
+              ))}
             </div>
-          )
-        })}
+
+            {/* Hour rows */}
+            {HOURS.map((hour) => (
+              <div key={hour} className="grid grid-cols-8 border-b border-border/30 last:border-b-0 hover:bg-secondary/20 transition-colors">
+                {/* Time label */}
+                <div className="p-2 text-xs font-mono text-muted-foreground text-center border-r border-border/50 flex items-center justify-center bg-secondary/30">
+                  {hour}
+                </div>
+                {/* Day cells */}
+                {DAYS.map(({ key }) => {
+                  const selected = isSelected(key, hour)
+                  return (
+                    <button
+                      key={`${key}-${hour}`}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); handleMouseDown(key, hour) }}
+                      onMouseEnter={() => handleMouseEnter(key, hour)}
+                      className={`border-r border-border/30 last:border-r-0 transition-colors cursor-pointer ${
+                        selected
+                          ? "bg-primary/80 hover:bg-primary"
+                          : "hover:bg-primary/10"
+                      }`}
+                    />
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-6 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-primary/80 rounded" />
+          <span>Disponible</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-card border border-border rounded" />
+          <span>No disponible</span>
+        </div>
+        <span className="ml-auto">Clic + arrastrar para seleccionar rangos</span>
       </div>
     </div>
   )
