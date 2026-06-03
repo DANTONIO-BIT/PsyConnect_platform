@@ -17,7 +17,10 @@ export const GET = async (request: NextRequest) => {
       await supabase.auth.exchangeCodeForSession(code)
 
     if (!exchangeError && user) {
-      // Redirect by role
+      // If a specific destination was requested (e.g. password reset), honour it
+      if (next !== "/") return NextResponse.redirect(`${origin}${next}`)
+
+      // Otherwise redirect by role
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
