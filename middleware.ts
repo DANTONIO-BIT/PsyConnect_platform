@@ -7,6 +7,17 @@ const PROTECTED_ROUTES = ["/admin", "/dashboard", "/perfil"]
 const ADMIN_ROUTES = ["/admin"]
 
 export const middleware = async (request: NextRequest) => {
+  // If a Supabase auth code lands on any page other than /auth/callback, rescue it
+  const { pathname, searchParams } = request.nextUrl
+  const code = searchParams.get("code")
+  if (code && pathname !== "/auth/callback") {
+    const callbackUrl = new URL("/auth/callback", request.url)
+    callbackUrl.searchParams.set("code", code)
+    const next = searchParams.get("next")
+    if (next) callbackUrl.searchParams.set("next", next)
+    return NextResponse.redirect(callbackUrl)
+  }
+
   // Skip auth checks if Supabase is not configured (local dev without credentials)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""
   if (!supabaseUrl || supabaseUrl.includes("placeholder")) {
