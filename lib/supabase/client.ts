@@ -15,6 +15,14 @@ export const createClient = (): any => {
   if (isMockMode()) return createMockClient()
   return createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        // Use localStorage so the PKCE code_verifier persists through
+        // cross-domain redirects (supabase.co → our app) without SameSite issues
+        storage: typeof window !== "undefined" ? window.localStorage : undefined,
+        flowType: "pkce",
+      },
+    }
   )
 }
