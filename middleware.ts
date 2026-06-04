@@ -44,7 +44,6 @@ export const middleware = async (request: NextRequest) => {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-  const pathname = request.nextUrl.pathname
 
   const isProtected = PROTECTED_ROUTES.some((r) => pathname.startsWith(r))
   const isAdmin = ADMIN_ROUTES.some((r) => pathname.startsWith(r))
